@@ -1,0 +1,12 @@
+[project]
+name = "db-service"
+version = "0.1.0"
+description = "Euchre persistent database microservice"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy",
+    "pydantic",
+    "passlib[bcrypt]"
+]

@@ -1,0 +1,10 @@
+[project]
+name = "bot-service"
+version = "0.1.0"
+description = "Euchre bot microservice"
+requires-python = ">=3.13"
+dependencies = [
+    "websockets",
+    "redis",
+    "anyio"
+]

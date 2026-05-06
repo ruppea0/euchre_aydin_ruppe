@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+  db:
+    build: ./db-service
+    ports:
+      - "8001:8001"
+    volumes:
+      - db-data:/app
+
+  api:
+    build: ./api-service
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DB_SERVICE_URL=http://db:8001
+    depends_on:
+      - redis
+      - db
+
+  bot:
+    build: ./bot-service
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - API_URL=ws://api:8000/ws
+    depends_on:
+      - api
+      - redis
+
+  web:
+    build: ./web-service
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  db-data:

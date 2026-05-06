@@ -1,0 +1,93 @@
+Overview
+
+This repository contains a deployed application where 4 users can play Euchre. The architecture is microservices-based with clear separation of concerns: frontend (Web), backend API (game logic & orchestration), Bot service, and persistent/datastore layers.
+
+System Architecture
+
+1) WEB (Frontend Service)
+- Interface: React or Vue single-page application deployed in Docker.
+- Communication: WebSockets for all gameplay actions (target: sub-100ms latency).
+- Lobby Discovery: "Bubble" UI showing active lobbies with player counts (e.g., "User's Lobby" — 2/4).
+- Dynamic UI Elements:
+	- Legal Move Highlighting: real-time visual cues driven by API validation.
+	- The "Alone" State: when a player goes alone, their partner's seat is grayed out and partner UI is locked until the hand concludes.
+
+Frontend flow (user story):
+1. User opens the site and authenticates via OAuth2.
+2. Start screen: create lobby or join existing lobby.
+3. Create lobby screen: host configures rules (e.g., "Screw the Dealer", timeouts).
+4. Users join, choose seats (partnerships are seat-based), and wait for the game to begin.
+5. During play, each player sees only their hand. Legal plays are highlighted; the UI enforces locked/disabled states for non-active players.
+6. End of hand/game: scoreboard updates; when a team reaches the win threshold (default 10 points) the game ends and final stats are persisted.
+
+2) API (Game Logic & Orchestration)
+- Role: central authority for game state, rule enforcement, authentication, and orchestration.
+- Auth: OAuth2 for user identity and security.
+- Communication: WebSocket server handling real-time messaging and heartbeats.
+- Key responsibilities:
+	- Turn management and enforcement of the 30-second turn timer.
+	- Deck, dealing, and trick resolution.
+	- Trump identification with correct priority (Left Bower = Jack of same color as trump).
+	- Configurable rules (e.g., "Screw the Dealer").
+	- Winner calculation for each trick and score updates.
+	- Bot hand-off: when seats are empty, timed out, or disconnected, call Bot Service to play a legal move.
+
+3) BOT SERVICE
+- Logic: lightweight service implementing a "Random Legal Move" strategy and basic seat management.
+- Triggers:
+	- Turn timeout: if a player doesn't act within 30 seconds, the Bot plays.
+	- Disconnection: if WebSocket heartbeat is lost, the Bot assumes control immediately.
+
+Data Management Strategy
+
+Layer / Technology / Purpose
+- Active State: Redis (fast, in-memory) — store active lobbies, current hands, turn timers, ephemeral metadata. Use a 30-second TTL to support reconnection windows.
+- Persistence: PostgreSQL (Amazon RDS) — long-term player stats (total wins, win percentage, favorite partners), historical games for analytics.
+
+Game Lifecycle & Resilience
+
+- Lobby Creation: host configures rules; players choose seats which determine partnerships.
+- The 30-Second Rule:
+	- Turn Timer: players have 30 seconds to call/play; exceeding this triggers the Bot Service to play.
+	- Rejoin Window: disconnected players have 30 seconds to reconnect and reclaim their seat; Redis TTL preserves session state during this window.
+- End of Game: when a team reaches 10 points (configurable), the API writes final stats to the persistent DB and clears the Redis session.
+
+Rules & Logic Details (implementation decisions)
+- Trump & Bowers: enforce card ranking where the Right Bower (Jack of trump) is highest, then Left Bower (Jack of same color) — ensure Left Bower is treated as trump and ordered correctly relative to other trump cards.
+- "Screw the Dealer": implement as a lobby-configurable rule; ensure API exposes a toggle and enforces the dealer behavior during bidding.
+- Legal Move Validation: API is authoritative — frontend requests validation and receives a legal move mask for UI highlighting.
+
+Bot Integration & Behavior
+- Strategy: Random legal move is default; pluggable AI allows future upgrades (heuristic or ML-based bots).
+- Ownership transfer: API signals Bot Service with current hand state and legal moves; Bot returns selected card within a short window.
+
+Operational / Deployment (AWS)
+
+- Compute: AWS ECS (Fargate) — Web, API, Bot services run in separate containers.
+- Networking: Application Load Balancer (ALB) — route incoming traffic; configure for WebSocket support and use sticky sessions as required by the session strategy.
+- State Cache: Amazon ElastiCache (Redis) — managed Redis for real-time state and turn timers.
+- Database: Amazon RDS (PostgreSQL) — persistent player/profile data and leaderboards.
+- Secrets: AWS Secrets Manager — store OAuth2 credentials, DB strings, API keys.
+
+Non-functional / Operational Concerns
+- Latency: WebSockets and Redis to keep typical in-play RTT under 100ms.
+- Scalability: per-service autoscaling in ECS based on CPU, memory, and custom metrics (active lobbies / open WS connections).
+- Resilience: short-lived Redis state + persistent DB snapshots; on game-end push final stats and garbage-collect session state.
+
+Decisions To Be Made (open design items)
+- Exact API message schema for WebSocket events (recommend: small, versioned JSON messages).
+- Session affinity vs. fully stateless connectors behind ALB (sticky sessions simplify live reconnections; token-based reconnection can avoid sticky sessions).
+- Bot sophistication: keep "random legal" initially; decide if heuristics or rule-based improvements are scheduled.
+- Telemetry and metrics: which metrics (latency, dropped connections, bot substitutions) to expose to CloudWatch.
+
+Next Steps
+- Draft the WebSocket event contract and API message schema.
+- Implement a Redis schema for lobby and player state (key naming, TTLs).
+- Create minimal Bot Service prototype that accepts hand state and returns a legal move.
+- Wire OAuth2 into the API and create a simple login flow for the frontend.
+
+Files of interest:
+- design.txt (this file) — primary design notes and decisions
+
+Notes
+- This update is additive to the original plan: it reorganizes and expands the architecture, data strategy, lifecycle, bot behavior, and AWS deployment details while preserving the initial user-flow ideas and responsibilities for Web/API/Database.
