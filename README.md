@@ -159,8 +159,23 @@ The API Service exposes REST endpoints for authentication and lobby management, 
 
 ##  Testing
 
+### Unit Testing
 Run unit tests for the game logic:
 ```bash
 cd api-service
 pytest
+```
+
+### Load Testing
+We use [k6](https://k6.io/) for load testing.
+
+1. Ensure the application is running (e.g., via `docker-compose up`).
+2. Install k6 (see [k6 installation guide](https://k6.io/docs/get-started/installation/)).
+3. Run the HTTP stress test (Auth & API):
+```bash
+k6 run load-tests/http-stress-test.js
+```
+4. Run the WebSocket gameplay test:
+```bash
+k6 run load-tests/ws-gameplay-test.js
 ```
